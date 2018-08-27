@@ -9,10 +9,10 @@ import scipy.optimize
 import matplotlib.pyplot as plt
 import matplotlib.patches as Patches
 from shapely.geometry import Polygon
-from keras.engine.training import GeneratorEnqueuer
 
 import tensorflow as tf
 
+from data_util import GeneratorEnqueuer
 
 tf.app.flags.DEFINE_string('training_data_path', '/data/ocr/icdar2015/',
                            'training dataset to use')
@@ -36,7 +36,8 @@ FLAGS = tf.app.flags.FLAGS
 def get_images():
     files = []
     for ext in ['jpg', 'png', 'jpeg', 'JPG']:
-        files.extend(glob.glob(FLAGS.training_data_path + '*.{}'.format(ext)))
+        files.extend(glob.glob(
+            os.path.join(FLAGS.training_data_path, '*.{}'.format(ext))))
     return files
 
 
@@ -50,11 +51,14 @@ def load_annoataion(p):
     text_tags = []
     if not os.path.exists(p):
         return np.array(text_polys, dtype=np.float32)
-    with open(p, 'rb') as f:
+    with open(p, 'r') as f:
         reader = csv.reader(f)
         for line in reader:
             label = line[-1]
-            x1, y1, x2, y2, x3, y3, x4, y4 = map(float, line[:8])
+            # strip BOM. \ufeff for python3,  \xef\xbb\bf for python2
+            line = [i.strip('\ufeff').strip('\xef\xbb\xbf') for i in line]
+
+            x1, y1, x2, y2, x3, y3, x4, y4 = list(map(float, line[:8]))
             text_polys.append([[x1, y1], [x2, y2], [x3, y3], [x4, y4]])
             if label == '*' or label == '###':
                 text_tags.append(True)
@@ -78,7 +82,7 @@ def polygon_area(poly):
     return np.sum(edge)/2.
 
 
-def check_and_validate_polys(polys, tags, (h, w)):
+def check_and_validate_polys(polys, tags, xxx_todo_changeme):
     '''
     check so that the text poly is in the same direction,
     and also filter some invalid polygons
@@ -86,6 +90,7 @@ def check_and_validate_polys(polys, tags, (h, w)):
     :param tags:
     :return:
     '''
+    (h, w) = xxx_todo_changeme
     if polys.shape[0] == 0:
         return polys
     polys[:, :, 0] = np.clip(polys[:, :, 0], 0, w-1)
@@ -97,10 +102,10 @@ def check_and_validate_polys(polys, tags, (h, w)):
         p_area = polygon_area(poly)
         if abs(p_area) < 1:
             # print poly
-            print 'invalid poly'
+            print('invalid poly')
             continue
         if p_area > 0:
-            print 'poly in wrong direction'
+            print('poly in wrong direction')
             poly = poly[(0, 3, 2, 1), :]
         validated_polys.append(poly)
         validated_tags.append(tag)
@@ -118,8 +123,8 @@ def crop_area(im, polys, tags, crop_background=False, max_tries=50):
     :return:
     '''
     h, w, _ = im.shape
-    pad_h = h/10
-    pad_w = w/10
+    pad_h = h//10
+    pad_w = w//10
     h_array = np.zeros((h + pad_h*2), dtype=np.int32)
     w_array = np.zeros((w + pad_w*2), dtype=np.int32)
     for poly in polys:
@@ -135,7 +140,7 @@ def crop_area(im, polys, tags, crop_background=False, max_tries=50):
     w_axis = np.where(w_array == 0)[0]
     if len(h_axis) == 0 or len(w_axis) == 0:
         return im, polys, tags
-    for i in xrange(max_tries):
+    for i in range(max_tries):
         xx = np.random.choice(w_axis, size=2)
         xmin = np.min(xx) - pad_w
         xmax = np.max(xx) - pad_w
@@ -186,25 +191,25 @@ def shrink_poly(poly, r):
                     np.linalg.norm(poly[0] - poly[3]) + np.linalg.norm(poly[1] - poly[2]):
         # first move (p0, p1), (p2, p3), then (p0, p3), (p1, p2)
         ## p0, p1
-        theta = np.arctan((poly[1][1] - poly[0][1]) / (poly[1][0] - poly[0][0]))
+        theta = np.arctan2((poly[1][1] - poly[0][1]), (poly[1][0] - poly[0][0]))
         poly[0][0] += R * r[0] * np.cos(theta)
         poly[0][1] += R * r[0] * np.sin(theta)
         poly[1][0] -= R * r[1] * np.cos(theta)
         poly[1][1] -= R * r[1] * np.sin(theta)
         ## p2, p3
-        theta = np.arctan((poly[2][1] - poly[3][1]) / (poly[2][0] - poly[3][0]))
+        theta = np.arctan2((poly[2][1] - poly[3][1]), (poly[2][0] - poly[3][0]))
         poly[3][0] += R * r[3] * np.cos(theta)
         poly[3][1] += R * r[3] * np.sin(theta)
         poly[2][0] -= R * r[2] * np.cos(theta)
         poly[2][1] -= R * r[2] * np.sin(theta)
         ## p0, p3
-        theta = np.arctan((poly[3][0] - poly[0][0]) / (poly[3][1] - poly[0][1]))
+        theta = np.arctan2((poly[3][0] - poly[0][0]), (poly[3][1] - poly[0][1]))
         poly[0][0] += R * r[0] * np.sin(theta)
         poly[0][1] += R * r[0] * np.cos(theta)
         poly[3][0] -= R * r[3] * np.sin(theta)
         poly[3][1] -= R * r[3] * np.cos(theta)
         ## p1, p2
-        theta = np.arctan((poly[2][0] - poly[1][0]) / (poly[2][1] - poly[1][1]))
+        theta = np.arctan2((poly[2][0] - poly[1][0]), (poly[2][1] - poly[1][1]))
         poly[1][0] += R * r[1] * np.sin(theta)
         poly[1][1] += R * r[1] * np.cos(theta)
         poly[2][0] -= R * r[2] * np.sin(theta)
@@ -212,25 +217,25 @@ def shrink_poly(poly, r):
     else:
         ## p0, p3
         # print poly
-        theta = np.arctan((poly[3][0] - poly[0][0]) / (poly[3][1] - poly[0][1]))
+        theta = np.arctan2((poly[3][0] - poly[0][0]), (poly[3][1] - poly[0][1]))
         poly[0][0] += R * r[0] * np.sin(theta)
         poly[0][1] += R * r[0] * np.cos(theta)
         poly[3][0] -= R * r[3] * np.sin(theta)
         poly[3][1] -= R * r[3] * np.cos(theta)
         ## p1, p2
-        theta = np.arctan((poly[2][0] - poly[1][0]) / (poly[2][1] - poly[1][1]))
+        theta = np.arctan2((poly[2][0] - poly[1][0]), (poly[2][1] - poly[1][1]))
         poly[1][0] += R * r[1] * np.sin(theta)
         poly[1][1] += R * r[1] * np.cos(theta)
         poly[2][0] -= R * r[2] * np.sin(theta)
         poly[2][1] -= R * r[2] * np.cos(theta)
         ## p0, p1
-        theta = np.arctan((poly[1][1] - poly[0][1]) / (poly[1][0] - poly[0][0]))
+        theta = np.arctan2((poly[1][1] - poly[0][1]), (poly[1][0] - poly[0][0]))
         poly[0][0] += R * r[0] * np.cos(theta)
         poly[0][1] += R * r[0] * np.sin(theta)
         poly[1][0] -= R * r[1] * np.cos(theta)
         poly[1][1] -= R * r[1] * np.sin(theta)
         ## p2, p3
-        theta = np.arctan((poly[2][1] - poly[3][1]) / (poly[2][0] - poly[3][0]))
+        theta = np.arctan2((poly[2][1] - poly[3][1]), (poly[2][0] - poly[3][0]))
         poly[3][0] += R * r[3] * np.cos(theta)
         poly[3][1] += R * r[3] * np.sin(theta)
         poly[2][0] -= R * r[2] * np.cos(theta)
@@ -255,10 +260,10 @@ def fit_line(p1, p2):
 def line_cross_point(line1, line2):
     # line1 0= ax+by+c, compute the cross point of line1 and line2
     if line1[0] != 0 and line1[0] == line2[0]:
-        print 'Cross point does not exist'
+        print('Cross point does not exist')
         return None
     if line1[0] == 0 and line2[0] == 0:
-        print 'Cross point does not exist'
+        print('Cross point does not exist')
         return None
     if line1[1] == 0:
         x = -line1[2]
@@ -349,29 +354,29 @@ def sort_rectangle(poly):
     # First find the lowest point
     p_lowest = np.argmax(poly[:, 1])
     if np.count_nonzero(poly[:, 1] == poly[p_lowest, 1]) == 2:
-        # 底边平行于X轴, 那么p0为左上角
+        # 底边平行于X轴, 那么p0为左上角 - if the bottom line is parallel to x-axis, then p0 must be the upper-left corner
         p0_index = np.argmin(np.sum(poly, axis=1))
         p1_index = (p0_index + 1) % 4
         p2_index = (p0_index + 2) % 4
         p3_index = (p0_index + 3) % 4
         return poly[[p0_index, p1_index, p2_index, p3_index]], 0.
     else:
-        # 找到最低点右边的点
+        # 找到最低点右边的点 - find the point that sits right to the lowest point
         p_lowest_right = (p_lowest - 1) % 4
         p_lowest_left = (p_lowest + 1) % 4
         angle = np.arctan(-(poly[p_lowest][1] - poly[p_lowest_right][1])/(poly[p_lowest][0] - poly[p_lowest_right][0]))
         # assert angle > 0
         if angle <= 0:
-            print angle, poly[p_lowest], poly[p_lowest_right]
+            print(angle, poly[p_lowest], poly[p_lowest_right])
         if angle/np.pi * 180 > 45:
-            # 这个点为p2
+            # 这个点为p2 - this point is p2
             p2_index = p_lowest
             p1_index = (p2_index - 1) % 4
             p0_index = (p2_index - 2) % 4
             p3_index = (p2_index + 1) % 4
             return poly[[p0_index, p1_index, p2_index, p3_index]], -(np.pi/2 - angle)
         else:
-            # 这个点为p3
+            # 这个点为p3 - this point is p3
             p3_index = p_lowest
             p0_index = (p3_index + 1) % 4
             p1_index = (p3_index + 2) % 4
@@ -467,7 +472,7 @@ def generate_rbox(im_size, polys, tags):
         tag = poly_tag[1]
 
         r = [None, None, None, None]
-        for i in xrange(4):
+        for i in range(4):
             r[i] = min(np.linalg.norm(poly[i] - poly[(i + 1) % 4]),
                        np.linalg.norm(poly[i] - poly[(i - 1) % 4]))
         # score map
@@ -484,9 +489,9 @@ def generate_rbox(im_size, polys, tags):
 
         xy_in_poly = np.argwhere(poly_mask == (poly_idx + 1))
         # if geometry == 'RBOX':
-        # 对任意两个顶点的组合生成一个平行四边形
+        # 对任意两个顶点的组合生成一个平行四边形 - generate a parallelogram for any combination of two vertices
         fitted_parallelograms = []
-        for i in xrange(4):
+        for i in range(4):
             p0 = poly[i]
             p1 = poly[(i + 1) % 4]
             p2 = poly[(i + 2) % 4]
@@ -495,13 +500,13 @@ def generate_rbox(im_size, polys, tags):
             backward_edge = fit_line([p0[0], p3[0]], [p0[1], p3[1]])
             forward_edge = fit_line([p1[0], p2[0]], [p1[1], p2[1]])
             if point_dist_to_line(p0, p1, p2) > point_dist_to_line(p0, p1, p3):
-                # 平行线经过p2
+                # 平行线经过p2 - parallel lines through p2
                 if edge[1] == 0:
                     edge_opposite = [1, 0, -p2[0]]
                 else:
                     edge_opposite = [edge[0], -1, p2[1] - edge[0] * p2[0]]
             else:
-                # 经过p3
+                # 经过p3 - after p3
                 if edge[1] == 0:
                     edge_opposite = [1, 0, -p3[0]]
                 else:
@@ -548,7 +553,7 @@ def generate_rbox(im_size, polys, tags):
             new_p1 = line_cross_point(backward_opposite, edge)
             new_p2 = line_cross_point(backward_opposite, edge_opposite)
             fitted_parallelograms.append([new_p0, new_p1, new_p2, new_p3, new_p0])
-        areas = map(lambda t: Polygon(t).area, fitted_parallelograms)
+        areas = [Polygon(t).area for t in fitted_parallelograms]
         parallelogram = np.array(fitted_parallelograms[np.argmin(areas)][:-1], dtype=np.float32)
         # sort thie polygon
         parallelogram_coord_sum = np.sum(parallelogram, axis=1)
@@ -580,7 +585,8 @@ def generator(input_size=512, batch_size=32,
               random_scale=np.array([0.5, 1, 2.0, 3.0]),
               vis=False):
     image_list = np.array(get_images())
-    print '{} training images in {}'.format(image_list.shape[0], FLAGS.training_data_path)
+    print('{} training images in {}'.format(
+        image_list.shape[0], FLAGS.training_data_path))
     index = np.arange(0, image_list.shape[0])
     while True:
         np.random.shuffle(index)
@@ -597,6 +603,7 @@ def generator(input_size=512, batch_size=32,
                 h, w, _ = im.shape
                 txt_fn = im_fn.replace(os.path.basename(im_fn).split('.')[1], 'txt')
                 if not os.path.exists(txt_fn):
+                    print('text file {} does not exists'.format(txt_fn))
                     continue
 
                 text_polys, text_tags = load_annoataion(txt_fn)
@@ -706,20 +713,21 @@ def generator(input_size=512, batch_size=32,
                     score_maps = []
                     geo_maps = []
                     training_masks = []
-            except Exception, e:
-                print e
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
                 continue
 
 
-def get_batch(num_workers=10, **kwargs):
+def get_batch(num_workers, **kwargs):
     try:
-        enqueuer = GeneratorEnqueuer(generator(**kwargs), pickle_safe=True)
-        enqueuer.start(max_q_size=24, workers=num_workers)
+        enqueuer = GeneratorEnqueuer(generator(**kwargs), use_multiprocessing=True)
+        print('Generator use 10 batches for buffering, this may take a while, you can tune this yourself.')
+        enqueuer.start(max_queue_size=10, workers=num_workers)
         generator_output = None
         while True:
             while enqueuer.is_running():
                 if not enqueuer.queue.empty():
-                    # print self.enqueuer.queue.qsize()
                     generator_output = enqueuer.queue.get()
                     break
                 else:
@@ -731,8 +739,6 @@ def get_batch(num_workers=10, **kwargs):
             enqueuer.stop()
 
 
+
 if __name__ == '__main__':
-    gen = generator(input_size=512, batch_size=32, vis=True)
-    while True:
-        images, image_fns, score_maps, geo_maps, training_masks = gen.next()
-        print len(images)
+    pass

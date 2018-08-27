@@ -53,8 +53,8 @@ def model(images, weight_decay=1e-5, is_training=True):
                             weights_regularizer=slim.l2_regularizer(weight_decay)):
             f = [end_points['pool5'], end_points['pool4'],
                  end_points['pool3'], end_points['pool2']]
-            for i in xrange(4):
-                print 'Shape of f_{} {}'.format(i, f[i].shape)
+            for i in range(4):
+                print('Shape of f_{} {}'.format(i, f[i].shape))
             g = [None, None, None, None]
             h = [None, None, None, None]
             num_outputs = [None, 128, 64, 32]
@@ -68,7 +68,7 @@ def model(images, weight_decay=1e-5, is_training=True):
                     g[i] = unpool(h[i])
                 else:
                     g[i] = slim.conv2d(h[i], num_outputs[i], 3)
-                print 'Shape of h_{} {}, g_{} {}'.format(i, h[i].shape, i, g[i].shape)
+                print('Shape of h_{} {}, g_{} {}'.format(i, h[i].shape, i, g[i].shape))
 
             # here we use a slightly different way for regression part,
             # we first use a sigmoid to limit the regression range, and also
@@ -129,8 +129,8 @@ def loss(y_true_cls, y_pred_cls,
     area_union = area_gt + area_pred - area_intersect
     L_AABB = -tf.log((area_intersect + 1.0)/(area_union + 1.0))
     L_theta = 1 - tf.cos(theta_pred - theta_gt)
-    tf.summary.scalar('geometry_AABB', tf.reduce_mean(L_AABB * y_true_cls))
-    tf.summary.scalar('geometry_theta', tf.reduce_mean(L_theta * y_true_cls))
+    tf.summary.scalar('geometry_AABB', tf.reduce_mean(L_AABB * y_true_cls * training_mask))
+    tf.summary.scalar('geometry_theta', tf.reduce_mean(L_theta * y_true_cls * training_mask))
     L_g = L_AABB + 20 * L_theta
 
     return tf.reduce_mean(L_g * y_true_cls * training_mask) + classification_loss
